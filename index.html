@@ -1,60 +1,94 @@
-<!DOCTYPE html><html lang="ja"><head>
-<meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no"/>
-<title>AR Diagnose</title>
-<script src="https://cdn.jsdelivr.net/npm/aframe@1.5.0/dist/aframe.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
-<style>
-  html,body{margin:0;height:100%;background:#000} body{overflow:hidden}
-  .ui{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:auto}
-  .panel{background:rgba(0,0,0,.65);color:#fff;padding:14px 16px;border-radius:12px;max-width:min(92vw,560px);
-         font:14px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;text-align:left}
-  button{margin-top:8px;padding:10px 14px;border:0;border-radius:10px;background:#00c389;color:#10231b;font-weight:700;cursor:pointer}
-  pre{background:rgba(255,255,255,.06);padding:8px;border-radius:8px;max-height:38vh;overflow:auto}
-</style>
-</head><body>
-<div id="gate" class="ui"><div class="panel">
-  <div style="font-weight:700;margin-bottom:6px">AR開始テスト</div>
-  <div>① アセット到達性チェック → ② カメラ権限取得 → ③ MindAR開始<br>LINE/X等のアプリ内ブラウザは不可。Safari/Chromeで開いてください。</div>
-  <button id="startBtn">カメラを許可して開始</button>
-  <pre id="log"></pre>
-</div></div>
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
+  <title>AR (robust start)</title>
 
-<a-scene id="sc"
-  mindar-image="imageTargetSrc: ./targets.mind; autoStart: false;"
-  vr-mode-ui="enabled:false" embedded>
-  <a-camera look-controls="enabled:false"></a-camera>
-  <a-entity mindar-image-target="targetIndex:0">
-    <a-entity gltf-model="./model.glb" position="0 0 0.05" scale="0.15 0.15 0.15" animation-mixer></a-entity>
-  </a-entity>
-</a-scene>
+  <!-- 安定版に固定：A-Frame 1.4.1 + MindAR 1.2.4 -->
+  <script src="https://cdn.jsdelivr.net/npm/aframe@1.4.1/dist/aframe.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.4/dist/mindar-image-aframe.prod.js"></script>
 
-<script>
-const L = (m)=>{ const el=document.getElementById('log'); el.textContent += m+"\n"; el.scrollTop=el.scrollHeight; };
-window.onerror=(m,s,l,c,e)=>L("JS ERROR: "+m);
+  <style>
+    html,body{margin:0;height:100%;background:#000} body{overflow:hidden}
+    .ui{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
+    .panel{background:rgba(0,0,0,.65);color:#fff;padding:14px 16px;border-radius:12px;
+           font:14px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;text-align:center}
+    button{margin-top:10px;padding:10px 14px;border:0;border-radius:10px;background:#00c389;color:#10231b;font-weight:700}
+    .toast{position:fixed;left:12px;right:12px;bottom:12px;color:#fff;background:rgba(0,0,0,.55);
+           padding:8px 10px;border-radius:10px;font:13px/1.4 system-ui;display:none}
+  </style>
+</head>
+<body>
+  <!-- 初回は確実にユーザー操作で開始（iOS対策） -->
+  <div id="gate" class="ui">
+    <div class="panel">
+      <div style="font-weight:700;margin-bottom:6px">カメラを開始します</div>
+      <div>LINEやXのアプリ内ブラウザでは動かないことがあります。<br>Safari/Chromeで開いてください。</div>
+      <button id="startBtn">はじめる</button>
+    </div>
+  </div>
+  <div id="toast" class="toast"></div>
 
-(async()=>{
-  // ① アセット到達性チェック
-  async function head(u){ try{ const r=await fetch(u,{method:'HEAD'}); L(`${u} → ${r.status}`); return r.ok; }catch(e){ L(`${u} → ERROR ${e}`); return false; } }
-  const okMind = await head('./targets.mind');
-  const okGLB  = await head('./model.glb');
+  <a-scene id="sc"
+    mindar-image="imageTargetSrc: ./targets.mind; autoStart: false;"
+    color-space="sRGB"
+    renderer="precision: mediump; antialias: true; physicallyCorrectLights: true"
+    vr-mode-ui="enabled:false"
+    device-orientation-permission-ui="enabled:true"
+    embedded
+  >
+    <a-camera look-controls="enabled:false"></a-camera>
 
-  const sc = document.getElementById('sc');
-  sc.addEventListener('arReady', ()=>L('MindAR: arReady（OK）'));
-  sc.addEventListener('arError', e=>L('MindAR: arError（カメラ/センサー不可）'));
-  sc.addEventListener('loaded', ()=>L('A-Frame: scene loaded'));
+    <a-entity mindar-image-target="targetIndex:0">
+      <a-entity gltf-model="./model.glb" position="0 0 0.05" scale="0.15 0.15 0.15" animation-mixer></a-entity>
+    </a-entity>
 
-  document.getElementById('startBtn').onclick = async ()=>{
-    try{
-      L('getUserMedia...');
-      const s = await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}},audio:false});
-      s.getTracks().forEach(t=>t.stop());
-      L('getUserMedia OK');
-      const sys = sc.systems['mindar-image-system'];
-      await sys.start(); // autoStart:false なので手動開始
-      document.getElementById('gate').style.display='none';
-      L('MindAR start() called');
-    }catch(e){ L('getUserMedia FAIL: '+e.name+' '+e.message); }
-  };
-})();
-</script>
-</body></html>
+    <a-entity light="type: ambient; intensity:0.9"></a-entity>
+    <a-entity light="type: directional; intensity:0.6" position="1 1 1"></a-entity>
+  </a-scene>
+
+  <script>
+  (function(){
+    const sc = document.getElementById('sc');
+    const gate = document.getElementById('gate');
+    const toast = document.getElementById('toast');
+    const show = (m)=>{ toast.textContent=m; toast.style.display='block'; clearTimeout(show._t); show._t=setTimeout(()=>toast.style.display='none', 3000); };
+
+    // A-Frame / MindAR 状態ログ（任意）
+    sc.addEventListener('loaded',   ()=>show('準備中…'));
+    sc.addEventListener('arReady',  ()=>show('カメラ開始。ターゲットにかざしてください'));
+    sc.addEventListener('arError',  ()=>show('カメラ/センサーが利用できません。権限とHTTPSを確認'));
+
+    // シーンのロード完了を待つユーティリティ
+    function waitSceneLoaded(el){
+      return new Promise(res => el.hasLoaded ? res() : el.addEventListener('loaded', res, {once:true}));
+    }
+
+    document.getElementById('startBtn').addEventListener('click', async ()=>{
+      try{
+        // ① 先に権限を確実に取る
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+          show('このブラウザはカメラに対応していません。Safari/Chromeをお試しください。'); return;
+        }
+        const s = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:{ ideal:'environment' } }, audio:false });
+        s.getTracks().forEach(t=>t.stop()); // 権限だけ確保して即停止
+
+        // ② シーンが完全に初期化されるのを待つ
+        await waitSceneLoaded(sc);
+
+        // ③ MindARシステムを取得して start
+        const sys = sc.systems && sc.systems['mindar-image-system'];
+        if (!sys){ show('初期化に失敗しました（mindar-image-system未登録）'); return; }
+        await sys.start();
+
+        gate.style.display='none';
+        show('起動しました');
+      }catch(e){
+        show(`起動エラー: ${e.name||''} ${e.message||e}`);
+      }
+    }, {passive:true});
+  })();
+  </script>
+</body>
+</html>
