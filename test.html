@@ -1,0 +1,10 @@
+<!DOCTYPE html><meta name=viewport content="width=device-width,initial-scale=1">
+<video id=v autoplay playsinline style="width:100vw;height:100vh;object-fit:cover;background:#000"></video>
+<script>
+(async()=>{
+  try{
+    const s=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}},audio:false});
+    v.srcObject=s;
+  }catch(e){ document.body.innerHTML='Error: '+e.name+' '+e.message; }
+})();
+</script>
