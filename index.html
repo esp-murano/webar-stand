@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>AR Stand</title>
+  <!-- A-Frame + MindAR（CDN） -->
+  <script src="https://cdn.jsdelivr.net/npm/aframe@1.5.0/dist/aframe.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
+  <style>
+    body, html { margin:0; padding:0; overflow:hidden; background:#000; }
+    .ui {
+      position: fixed; top: 12px; left: 12px; right: 12px;
+      color: #fff; font: 14px/1.4 system-ui, sans-serif;
+      text-shadow: 0 1px 2px rgba(0,0,0,.6);
+    }
+    .hint { background: rgba(0,0,0,.35); padding: 8px 10px; border-radius: 8px; }
+  </style>
+</head>
+<body>
+  <div class="ui">
+    <div class="hint">明るい場所で、アクリルの<strong>イラスト全体</strong>が画面に入るように少し離れてください。反射が強い場合は同梱の白カードを背面に置いてください。</div>
+  </div>
+
+  <!-- MindARの画像トラッキング・シーン -->
+  <a-scene
+    mindar-image="imageTargetSrc: ./target.mind; filterMinCF:0.001; filterBeta: 0.01;"
+    color-space="sRGB"
+    renderer="precision: mediump; antialias: true; physicallyCorrectLights: true"
+    vr-mode-ui="enabled: false"
+    device-orientation-permission-ui="enabled: true"
+    embedded
+  >
+    <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+
+    <!-- 画像ターゲット（イラスト）: index=0 に登録したものに重ねる -->
+    <a-entity mindar-image-target="targetIndex: 0">
+      <!-- 例: 3Dモデルを出す -->
+      <a-entity
+         gltf-model="./model.glb"
+         position="0 0 0"
+         scale="0.15 0.15 0.15"
+         animation-mixer>
+      </a-entity>
+
+      <!-- 例: 2Dプレーンの演出（ロゴなど） -->
+      <a-plane position="0 -0.3 0" width="0.6" height="0.15" material="color: #ffffff; opacity: 0.85">
+        <a-text value="Thanks for your purchase!" align="center" width="1.2" color="#111"></a-text>
+      </a-plane>
+    </a-entity>
+  </a-scene>
+</body>
+</html>

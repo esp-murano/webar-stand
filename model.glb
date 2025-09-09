@@ -1,0 +1,4 @@
+<a-entity id="model" position="0 0 0.05" rotation="0 0 0" scale="0.2 0.2 0.2">
+  <a-box depth="0.05" height="0.6" width="0.4"
+         material="color:#ffd; emissive:#fff; emissiveIntensity:0.3"></a-box>
+</a-entity>
