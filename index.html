@@ -1,30 +1,60 @@
-<!DOCTYPE html>
-<html lang="ja">
-<head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
-  <title>AR Minimal</title>
-  <script src="https://cdn.jsdelivr.net/npm/aframe@1.5.0/dist/aframe.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
-  <style>html,body{margin:0;height:100%;background:#000} body{overflow:hidden}</style>
-</head>
-<body>
-  <a-scene
-    mindar-image="imageTargetSrc: ./targets.mind;"
-    color-space="sRGB"
-    renderer="precision: mediump; antialias: true; physicallyCorrectLights: true"
-    vr-mode-ui="enabled:false"
-    device-orientation-permission-ui="enabled:true"
-    embedded
-  >
-    <a-camera look-controls="enabled:false"></a-camera>
+<!DOCTYPE html><html lang="ja"><head>
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no"/>
+<title>AR Diagnose</title>
+<script src="https://cdn.jsdelivr.net/npm/aframe@1.5.0/dist/aframe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
+<style>
+  html,body{margin:0;height:100%;background:#000} body{overflow:hidden}
+  .ui{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:auto}
+  .panel{background:rgba(0,0,0,.65);color:#fff;padding:14px 16px;border-radius:12px;max-width:min(92vw,560px);
+         font:14px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;text-align:left}
+  button{margin-top:8px;padding:10px 14px;border:0;border-radius:10px;background:#00c389;color:#10231b;font-weight:700;cursor:pointer}
+  pre{background:rgba(255,255,255,.06);padding:8px;border-radius:8px;max-height:38vh;overflow:auto}
+</style>
+</head><body>
+<div id="gate" class="ui"><div class="panel">
+  <div style="font-weight:700;margin-bottom:6px">AR開始テスト</div>
+  <div>① アセット到達性チェック → ② カメラ権限取得 → ③ MindAR開始<br>LINE/X等のアプリ内ブラウザは不可。Safari/Chromeで開いてください。</div>
+  <button id="startBtn">カメラを許可して開始</button>
+  <pre id="log"></pre>
+</div></div>
 
-    <a-entity mindar-image-target="targetIndex:0">
-      <a-entity gltf-model="./model.glb" position="0 0 0.05" scale="0.15 0.15 0.15" animation-mixer></a-entity>
-    </a-entity>
+<a-scene id="sc"
+  mindar-image="imageTargetSrc: ./targets.mind; autoStart: false;"
+  vr-mode-ui="enabled:false" embedded>
+  <a-camera look-controls="enabled:false"></a-camera>
+  <a-entity mindar-image-target="targetIndex:0">
+    <a-entity gltf-model="./model.glb" position="0 0 0.05" scale="0.15 0.15 0.15" animation-mixer></a-entity>
+  </a-entity>
+</a-scene>
 
-    <a-entity light="type: ambient; intensity:0.9"></a-entity>
-    <a-entity light="type: directional; intensity:0.6" position="1 1 1"></a-entity>
-  </a-scene>
-</body>
-</html>
+<script>
+const L = (m)=>{ const el=document.getElementById('log'); el.textContent += m+"\n"; el.scrollTop=el.scrollHeight; };
+window.onerror=(m,s,l,c,e)=>L("JS ERROR: "+m);
+
+(async()=>{
+  // ① アセット到達性チェック
+  async function head(u){ try{ const r=await fetch(u,{method:'HEAD'}); L(`${u} → ${r.status}`); return r.ok; }catch(e){ L(`${u} → ERROR ${e}`); return false; } }
+  const okMind = await head('./targets.mind');
+  const okGLB  = await head('./model.glb');
+
+  const sc = document.getElementById('sc');
+  sc.addEventListener('arReady', ()=>L('MindAR: arReady（OK）'));
+  sc.addEventListener('arError', e=>L('MindAR: arError（カメラ/センサー不可）'));
+  sc.addEventListener('loaded', ()=>L('A-Frame: scene loaded'));
+
+  document.getElementById('startBtn').onclick = async ()=>{
+    try{
+      L('getUserMedia...');
+      const s = await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}},audio:false});
+      s.getTracks().forEach(t=>t.stop());
+      L('getUserMedia OK');
+      const sys = sc.systems['mindar-image-system'];
+      await sys.start(); // autoStart:false なので手動開始
+      document.getElementById('gate').style.display='none';
+      L('MindAR start() called');
+    }catch(e){ L('getUserMedia FAIL: '+e.name+' '+e.message); }
+  };
+})();
+</script>
+</body></html>
