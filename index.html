@@ -15,8 +15,8 @@
     body { overflow:hidden; -webkit-user-select:none; user-select:none; }
 
     /* A-Frameキャンバスは最前面、背景は透過に */
-    a-scene { position:fixed; inset:0; width:100vw; height:100vh; }
-
+    a-scene { position:fixed; inset:0; width:100vw; height:100vh; z-index:1; }
+    canvas.a-canvas, .a-canvas { background: transparent !important; }
 
     /* MindARが作るカメラvideoを“背面0”に固定（IDが端末／版で異なるため複数指定） */
     #mindar-image-video, #mindar-video, #mindar-face-video, .mindar-camera, video.mindar-video {
