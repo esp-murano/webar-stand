@@ -3,19 +3,28 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
-  <title>AR Video – background via VideoTexture</title>
+  <title>AR Video – DOM background (definitive)</title>
 
   <!-- 依存（順番厳守） -->
   <script src="https://aframe.io/releases/1.4.1/aframe.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.4/dist/mindar-image-aframe.prod.js"></script>
 
   <style>
+    /* 全画面レイアウト */
     html, body { margin:0; height:100%; background:#000; }
     body { overflow:hidden; -webkit-user-select:none; user-select:none; }
-    /* a-scene を前面に全画面固定（背景はWebGLで描くので alpha: false にします） */
-    a-scene { position:fixed; inset:0; width:100vw; height:100vh; z-index:1; }
 
-    /* 起動ゲート（iOS対策：ユーザー操作で開始） */
+    /* 背景のカメラ映像（自前で追加するvideo） */
+    #bgcam{
+      position:fixed; left:0; top:0; width:100vw; height:100vh;
+      object-fit:cover; z-index:0; background:#000;
+    }
+
+    /* A‑Frame シーンは前面に固定、キャンバスは完全透明 */
+    a-scene { position:fixed; inset:0; width:100vw; height:100vh; z-index:1; }
+    canvas.a-canvas, .a-canvas { background: transparent !important; }
+
+    /* 起動ゲート（iOSの自動再生制限回避） */
     .gate { position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
             background:rgba(0,0,0,.6); z-index:10; }
     .panel { color:#fff; background:rgba(0,0,0,.55); padding:14px 16px; border-radius:12px;
@@ -27,7 +36,7 @@
     /* HUD（状態表示） */
     #hud { position:fixed; top:8px; left:8px; z-index:9; color:#fff;
            background:rgba(0,0,0,.5); padding:6px 8px; border-radius:8px;
-           font:12px system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+           font:12px system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; white-space:pre-line; }
 
     /* サウンド切替（任意） */
     #soundBtn { position:fixed; right:12px; bottom:12px; z-index:9;
@@ -36,6 +45,9 @@
   </style>
 </head>
 <body>
+  <!-- 自前の背景カメラvideo（あとで srcObject を差す） -->
+  <video id="bgcam" autoplay playsinline webkit-playsinline muted></video>
+
   <!-- 起動ボタン -->
   <div id="gate" class="gate">
     <div class="panel">
@@ -53,25 +65,24 @@
   <div id="hud">起動待機中…</div>
   <button id="soundBtn" title="音のオン/オフ">🔇 音OFF</button>
 
-  <!-- MindAR シーン（★ alpha:false：背景はWebGLで描画する） -->
+  <!-- MindAR シーン（alpha:true でキャンバス透明化） -->
   <a-scene id="sc"
     mindar-image="imageTargetSrc: ./targets.mind; autoStart: false;"
-    renderer="alpha: false; antialias: true; precision: mediump; physicallyCorrectLights: true"
+    renderer="alpha: true; antialias: true; precision: mediump; physicallyCorrectLights: true"
     vr-mode-ui="enabled:false"
     device-orientation-permission-ui="enabled:true"
     embedded
   >
     <a-assets>
-      <!-- 検出で出す動画（任意）。不要ならこのブロックごと削除OK -->
+      <!-- 検出で出す動画（同階層に video.mp4 を置く。不要なら削除OK） -->
       <video id="pv" src="./video.mp4"
              preload="auto" loop muted playsinline webkit-playsinline crossorigin="anonymous"></video>
     </a-assets>
 
     <a-camera look-controls="enabled:false"></a-camera>
 
-    <!-- 検出ターゲット（index:0） -->
     <a-entity id="marker" mindar-image-target="targetIndex:0">
-      <!-- 動画プレーン（16:9の例） -->
+      <!-- ターゲット上の動画（16:9例） -->
       <a-video id="videoNode" src="#pv"
                position="0 0 0.06" width="0.80" height="0.45"
                rotation="0 0 0" visible="false"></a-video>
@@ -86,61 +97,69 @@
     const sc   = document.getElementById('sc');
     const gate = document.getElementById('gate');
     const hud  = document.getElementById('hud');
-    const soundBtn = document.getElementById('soundBtn');
-    const marker   = document.getElementById('marker');
+    const bg   = document.getElementById('bgcam');
 
-    const videoEl   = document.getElementById('pv');         // 任意の再生用動画
-    const videoNode = document.getElementById('videoNode');  // その表示ノード
+    const marker    = document.getElementById('marker');
+    const videoEl   = document.getElementById('pv');        // （任意）ターゲット上の動画
+    const videoNode = document.getElementById('videoNode');
+    const soundBtn  = document.getElementById('soundBtn');
+
     const log = (m)=>{ hud.textContent = m; };
-
     const waitLoaded = el => new Promise(res => el.hasLoaded ? res() : el.addEventListener('loaded', res, {once:true}));
+    const sleep = (ms)=>new Promise(r=>setTimeout(r,ms));
 
-    // ---- 背景にカメラ映像を“WebGLテクスチャ”として適用 ----
-    function applyCameraAsBackground(){
-      const THREE = AFRAME.THREE;
-      // MindAR が作ったカメラ用 <video> を特定（srcObject があるもの）
-      const camVideo = Array.from(document.querySelectorAll('video')).find(v => v.srcObject);
-      if (!camVideo){ log('背景動画が見つかりません'); return; }
+    // ---- MindARが作るカメラvideoを探し、そのMediaStreamを#bgcamに差す ----
+    async function attachMindarStreamToBackground(){
+      // MindAR内部videoは start() 後に生成されるのでポーリング
+      let tries = 0, camVideo = null;
+      while(tries++ < 50 && !camVideo){
+        const vids = Array.from(document.querySelectorAll('video'));
+        camVideo = vids.find(v => v !== bg && v !== videoEl && v.srcObject);
+        if (!camVideo) await sleep(100);
+      }
+      if (!camVideo){
+        log('カメラ映像を取得できませんでした（video要素未検出）'); return;
+      }
 
-      // iOS向けに playsinline 指定（念のため）
-      camVideo.setAttribute('playsinline',''); camVideo.setAttribute('webkit-playsinline','');
+      // デバッグ：発見したvideoの状態をHUDに
+      const st = camVideo.srcObject;
+      const info =
+        `カメラ接続: OK
+video.id: ${camVideo.id || '(no id)'}
+readyState: ${camVideo.readyState} paused: ${camVideo.paused}
+videoWidth×videoHeight: ${camVideo.videoWidth}×${camVideo.videoHeight}
+tracks: ${(st && st.getVideoTracks && st.getVideoTracks()[0] && st.getVideoTracks()[0].label) || 'n/a'}`;
+      log(info);
 
-      try { camVideo.play().catch(()=>{}); } catch(_){}
-
-      // VideoTexture をシーン背景にセット
-      const tex = new THREE.VideoTexture(camVideo);
-      if ('colorSpace' in tex) { tex.colorSpace = THREE.SRGBColorSpace; } else { tex.encoding = THREE.sRGBEncoding; }
-      tex.minFilter = THREE.LinearFilter; tex.magFilter = THREE.LinearFilter;
-      tex.format = THREE.RGBFormat;
-
-      sc.object3D.background = tex;
-      log('arReady：カメラ起動（背景適用済）。ターゲットにかざしてください');
+      // 背景videoへ同じストリームを差す
+      bg.srcObject = st;
+      bg.setAttribute('playsinline',''); bg.setAttribute('webkit-playsinline','');
+      try { await bg.play(); } catch(e){ /* 端末により無音/ユーザー操作後でOK */ }
     }
 
-    // ---- 状態表示 ----
-    sc.addEventListener('arReady', ()=>{ /* 背景適用は start() 後に呼ぶ */ });
+    // ---- 状態表示＆検出ハンドラ ----
     sc.addEventListener('arError', ()=>log('arError：権限/HTTPS/ブラウザを確認してください'));
+    sc.addEventListener('arReady', ()=>log('arReady：カメラ起動'));
     marker.addEventListener('targetFound', async ()=>{
-      log('targetFound：検出OK（動画再生）');
-      if (videoEl) { try { videoNode.setAttribute('visible', true); await videoEl.play(); } catch(_) {} }
+      log((hud.textContent ? hud.textContent+'\n' : '') + 'targetFound：検出OK（動画再生）');
+      if (videoEl){ try { videoNode.setAttribute('visible', true); await videoEl.play(); } catch(_) {} }
     });
     marker.addEventListener('targetLost', ()=>{
-      log('targetLost：見失い（動画一時停止）');
-      if (videoEl) { videoEl.pause(); videoNode.setAttribute('visible', false); }
+      log((hud.textContent ? hud.textContent+'\n' : '') + 'targetLost：見失い（動画一時停止）');
+      if (videoEl){ videoEl.pause(); videoNode.setAttribute('visible', false); }
     });
 
-    // ---- 起動：権限取得 → シーン初期化 → MindAR開始 → 背景適用 ----
+    // ---- 起動：権限→シーン初期化→MindAR開始→背景接続 ----
     document.getElementById('startBtn').addEventListener('click', async ()=>{
       try{
-        // ① カメラ権限（iOS安定化）
-        const s = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:{ ideal:'environment' } }, audio:false });
-        // 権限だけ取ったら停止（MindARが自前で開く）
-        s.getTracks().forEach(t => t.stop());
+        // ① カメラ権限（iOS安定化のため先に要求）
+        const pre = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:{ ideal:'environment' } }, audio:false });
+        pre.getTracks().forEach(t => t.stop()); // MindARが自前で開き直すため停止
 
-        // ② 任意の動画の自動再生権も確保（すぐ停止）
+        // ② ターゲット動画の自動再生権も確保（すぐ停止）
         if (videoEl){ try { await videoEl.play(); videoEl.pause(); videoEl.currentTime = 0; } catch(_) {} }
 
-        // ③ A‑Frameシーンの初期化完了を待つ
+        // ③ A‑Frameシーン準備完了を待つ
         await waitLoaded(sc);
 
         // ④ MindAR開始
@@ -148,9 +167,8 @@
         if (!sys){ log('初期化エラー：mindar-image-system 取得失敗'); return; }
         await sys.start();
 
-        // ⑤ 背景にカメラ VideoTexture を適用
-        //    MindAR の内部 video が生成・再生されるタイミング差があるため少し待ってから適用
-        setTimeout(applyCameraAsBackground, 120);
+        // ⑤ 背景にカメラ映像を接続（同じMediaStreamを #bgcam に表示）
+        await attachMindarStreamToBackground();
 
         // UI整理
         gate.style.display = 'none';
