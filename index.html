@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
-  <title>AR – Capture Enabled</title>
+  <title>AR – All-in-One (stable + capture)</title>
 
   <!-- 依存（順番厳守） -->
   <script src="https://aframe.io/releases/1.4.1/aframe.min.js"></script>
@@ -13,35 +13,31 @@
     html, body { margin:0; height:100%; background:#000; }
     body { overflow:hidden; -webkit-user-select:none; user-select:none; }
 
-    /* 背景のカメラ映像（常に背面） */
+    /* 背景カメラ（常に背面） */
     #bgcam{
       position:fixed; left:0; top:0; width:100vw; height:100vh;
       object-fit:cover; z-index:0; background:#000;
     }
 
-    /* A‑Frameは前面・キャンバス透明（合成のため） */
+    /* A‑Frame は前面・キャンバス透明（合成のため） */
     a-scene { position:fixed; inset:0; width:100vw; height:100vh; z-index:1; }
     canvas.a-canvas, .a-canvas { background: transparent !important; }
 
-    /* HUD / 起動ゲート / 操作ボタン */
+    /* UI */
     #hud { position:fixed; top:8px; left:8px; z-index:9; color:#fff;
-      background:rgba(0,0,0,.5); padding:6px 8px; border-radius:8px;
-      font:12px system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; white-space:pre-line; }
+           background:rgba(0,0,0,.5); padding:6px 8px; border-radius:8px;
+           font:12px system-ui; white-space:pre-line; }
     .gate { position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
-      background:rgba(0,0,0,.6); z-index:10; }
+            background:rgba(0,0,0,.6); z-index:10; }
     .panel { color:#fff; background:rgba(0,0,0,.55); padding:14px 16px; border-radius:12px;
-      font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; text-align:center;
-      box-shadow:0 6px 18px rgba(0,0,0,.35); max-width:min(92vw,560px); }
-    button.ui {
-      position:fixed; z-index:9; border:0; border-radius:12px; cursor:pointer;
-      padding:12px 16px; font:14px/1 system-ui; color:#10231b; background:#00c389;
-      box-shadow:0 6px 18px rgba(0,0,0,.35);
-    }
+             font:14px/1.5 system-ui; text-align:center; box-shadow:0 6px 18px rgba(0,0,0,.35);
+             max-width:min(92vw,560px); }
+    button.ui { position:fixed; z-index:9; border:0; border-radius:12px; cursor:pointer;
+                padding:12px 16px; font:14px/1 system-ui; color:#10231b; background:#00c389;
+                box-shadow:0 6px 18px rgba(0,0,0,.35); }
     #startBtn { position:static; background:#00c389; color:#10231b; }
     #soundBtn { right:12px; bottom:12px; background:rgba(0,0,0,.55); color:#fff; }
-    #capBtn   { left:50%; bottom:12px; transform:translateX(-50%);
-                background:#fff; color:#111; font-weight:700; }
-    /* シャッターフラッシュ演出 */
+    #capBtn   { left:50%; bottom:12px; transform:translateX(-50%); background:#fff; color:#111; font-weight:700; }
     #flash { position:fixed; inset:0; background:#fff; opacity:0; pointer-events:none; z-index:12; }
   </style>
 </head>
@@ -62,37 +58,77 @@
     </div>
   </div>
 
-  <!-- HUD & 操作ボタン -->
+  <!-- HUD & 操作 -->
   <div id="hud">起動待機中…</div>
   <button id="soundBtn" class="ui" title="音のオン/オフ">🔇 音OFF</button>
   <button id="capBtn"  class="ui" title="写真を保存">📸 撮影</button>
   <div id="flash"></div>
 
-  <!-- MindARシーン（alpha:true＋preserveDrawingBuffer:true で読み出しOK） -->
+  <!-- シーン（★ iOS安定化パラメータ＋保存用 preserveDrawingBuffer） -->
   <a-scene id="sc"
-    mindar-image="imageTargetSrc: ./targets.mind; autoStart: false;"
+    mindar-image="
+      imageTargetSrc: ./targets.mind;
+      autoStart: false;
+      filterMinCF: 0.006;   /* 低信頼フレームは採用しない */
+      filterBeta: 0.05;     /* 追跡の平滑化を強める */
+      warmupTolerance: 3;   /* 3連続ヒットで確定（パカつき防止） */
+      missTolerance: 10;    /* 10フレーム外れても即ロストにしない */
+      maxTrack: 1;
+    "
     renderer="alpha: true; preserveDrawingBuffer: true; antialias: true; precision: mediump; physicallyCorrectLights: true"
     vr-mode-ui="enabled:false"
     device-orientation-permission-ui="enabled:true"
     embedded
   >
     <a-assets>
-      <!-- 検出時に出す任意の動画（不要なら削除OK） -->
+      <!-- 検出で出す動画（不要なら削除OK） -->
       <video id="pv" src="./video.mp4"
              preload="auto" loop muted playsinline webkit-playsinline crossorigin="anonymous"></video>
     </a-assets>
 
     <a-camera look-controls="enabled:false"></a-camera>
 
-    <a-entity id="marker" mindar-image-target="targetIndex:0">
+    <!-- 生の追跡ノード（MindARが更新） -->
+    <a-entity id="raw" mindar-image-target="targetIndex:0"></a-entity>
+
+    <!-- 平滑化ノード（ここに表示物をぶら下げる） -->
+    <a-entity id="smooth" pose-smoother="pos:0.18; rot:0.18; scale:0.18">
+      <!-- 例：ターゲット上の動画（16:9） -->
       <a-video id="videoNode" src="#pv"
                position="0 0 0.06" width="0.80" height="0.45"
                rotation="0 0 0" visible="false"></a-video>
+      <!-- GLBを出す場合はここに <a-entity gltf-model="./model.glb"> ... -->
     </a-entity>
 
     <a-entity light="type: ambient; intensity:0.9"></a-entity>
     <a-entity light="type: directional; intensity:0.6" position="1 1 1"></a-entity>
   </a-scene>
+
+  <script>
+  // ====== 平滑化コンポーネント（生raw→smoothへローパス） ======
+  AFRAME.registerComponent('pose-smoother', {
+    schema: {pos:{default:0.18}, rot:{default:0.18}, scale:{default:0.18}},
+    init(){
+      this.raw = document.getElementById('raw').object3D;
+      this.obj = this.el.object3D;
+      this.qTmp = new AFRAME.THREE.Quaternion();
+    },
+    tick(t,dt){
+      if (!this.raw) return;
+      const dtms = Math.max(1, dt||16);
+      const lerpP = 1 - Math.pow(1 - this.data.pos,   dtms/16);
+      const lerpR = 1 - Math.pow(1 - this.data.rot,   dtms/16);
+      const lerpS = 1 - Math.pow(1 - this.data.scale, dtms/16);
+      // 位置
+      this.obj.position.lerp(this.raw.position, lerpP);
+      // 回転（クォータニオン補間）
+      this.qTmp.copy(this.obj.quaternion).slerp(this.raw.quaternion, lerpR);
+      this.obj.quaternion.copy(this.qTmp);
+      // スケール
+      this.obj.scale.lerp(this.raw.scale, lerpS);
+    }
+  });
+  </script>
 
   <script>
   (function(){
@@ -104,7 +140,7 @@
     const soundBtn = document.getElementById('soundBtn');
     const flash = document.getElementById('flash');
 
-    const marker    = document.getElementById('marker');
+    const raw       = document.getElementById('raw');
     const videoEl   = document.getElementById('pv');
     const videoNode = document.getElementById('videoNode');
 
@@ -112,7 +148,7 @@
     const waitLoaded = el => new Promise(res => el.hasLoaded ? res() : el.addEventListener('loaded', res, {once:true}));
     const sleep = (ms)=>new Promise(r=>setTimeout(r,ms));
 
-    // MindARが作る内部videoのMediaStreamを#bgcamに流す
+    // MindAR内部のカメラvideoを見つけ、そのMediaStreamを #bgcam に差す
     async function attachMindarStreamToBackground(){
       let tries = 0, camVideo = null;
       while(tries++ < 50 && !camVideo){
@@ -127,12 +163,12 @@
       log('arReady：カメラ起動');
     }
 
-    // 検出ハンドラ
-    marker.addEventListener('targetFound', async ()=>{
+    // 検出イベント（rawに付く）
+    raw.addEventListener('targetFound', async ()=>{
       log((hud.textContent ? hud.textContent+'\n' : '') + 'targetFound：検出OK（動画再生）');
       if (videoEl){ try { videoNode.setAttribute('visible', true); await videoEl.play(); } catch(_) {} }
     });
-    marker.addEventListener('targetLost', ()=>{
+    raw.addEventListener('targetLost', ()=>{
       log((hud.textContent ? hud.textContent+'\n' : '') + 'targetLost：見失い（動画一時停止）');
       if (videoEl){ videoEl.pause(); videoNode.setAttribute('visible', false); }
     });
@@ -156,7 +192,7 @@
       }
     }, {passive:true});
 
-    // 音のオン/オフ切替
+    // 音オン/オフ
     soundBtn.addEventListener('click', async ()=>{
       if (!videoEl) return;
       const muted = !(videoEl.muted === false);
@@ -165,71 +201,36 @@
       try{ await videoEl.play(); }catch(_){}
     });
 
-    // --------- 📸 撮影処理 ----------
+    // 📸撮影：#bgcam + WebGLキャンバスを合成保存
     function drawVideoCover(ctx, video, dw, dh){
-      // CSSの object-fit:cover 相当で描画
-      const vw = video.videoWidth || video.width || 1280;
-      const vh = video.videoHeight || video.height || 720;
-      const scale = Math.max(dw / vw, dh / vh);
-      const w = Math.round(vw * scale);
-      const h = Math.round(vh * scale);
-      const dx = Math.round((dw - w) / 2);
-      const dy = Math.round((dh - h) / 2);
+      const vw = video.videoWidth || 1280, vh = video.videoHeight || 720;
+      const scale = Math.max(dw/vw, dh/vh), w = vw*scale, h = vh*scale;
+      const dx = (dw - w)/2, dy = (dh - h)/2;
       ctx.drawImage(video, 0, 0, vw, vh, dx, dy, w, h);
     }
-
     async function capture(){
       const webgl = document.querySelector('canvas.a-canvas');
-      if (!webgl){ log('撮影エラー：WebGLキャンバスが見つかりません'); return; }
-
-      // 端末ピクセル比で高解像度出力
+      if (!webgl){ log('撮影エラー：WebGLキャンバス未検出'); return; }
       const dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
       const W = Math.round(window.innerWidth  * dpr);
       const H = Math.round(window.innerHeight * dpr);
-
-      const shot = document.createElement('canvas');
-      shot.width = W; shot.height = H;
-      const ctx = shot.getContext('2d', {alpha:true});
-      ctx.imageSmoothingEnabled = true;
-
-      // 1) 背景（カメラ映像）
-      if (bg && (bg.readyState >= 2 || bg.srcObject)) {
-        drawVideoCover(ctx, bg, W, H);
-      } else {
-        ctx.fillStyle = '#000'; ctx.fillRect(0,0,W,H);
-      }
-      // 2) ARオーバーレイ（WebGLキャンバス）
+      const c = document.createElement('canvas'); c.width = W; c.height = H;
+      const ctx = c.getContext('2d', {alpha:true});
+      if (bg && (bg.readyState >= 2 || bg.srcObject)) drawVideoCover(ctx, bg, W, H); else { ctx.fillStyle='#000'; ctx.fillRect(0,0,W,H); }
       ctx.drawImage(webgl, 0, 0, W, H);
-
-      // シャッターフラッシュ
-      flash.style.transition = 'none'; flash.style.opacity = '1';
-      requestAnimationFrame(()=>{ flash.style.transition = 'opacity 140ms ease-out'; flash.style.opacity = '0'; });
-
-      // 保存（iOS対策：download不可なら新規タブ）
-      const filename = (()=> {
-        const d = new Date();
-        const z = n => String(n).padStart(2,'0');
-        return `ar_${d.getFullYear()}${z(d.getMonth()+1)}${z(d.getDate())}_${z(d.getHours())}${z(d.getMinutes())}${z(d.getSeconds())}.png`;
-      })();
-
-      if (shot.toBlob){
-        shot.toBlob(blob=>{
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url; a.download = filename;
-          document.body.appendChild(a); a.click();
-          setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); }, 300);
-          // iOSの一部でdownload不可 → 新規タブで表示
-          if (!('download' in HTMLAnchorElement.prototype)) window.open(url,'_blank');
-        }, 'image/png', 1.0);
-      } else {
-        const data = shot.toDataURL('image/png');
-        const a = document.createElement('a');
-        a.href = data; a.download = filename; a.click();
-        window.open(data, '_blank');
-      }
+      // フラッシュ
+      flash.style.transition='none'; flash.style.opacity='1';
+      requestAnimationFrame(()=>{ flash.style.transition='opacity 140ms ease-out'; flash.style.opacity='0'; });
+      // 保存
+      const ts=(()=>{const d=new Date(),z=n=>String(n).padStart(2,'0');return `${d.getFullYear()}${z(d.getMonth()+1)}${z(d.getDate())}_${z(d.getHours())}${z(d.getMinutes())}${z(d.getSeconds())}`})();
+      c.toBlob(b=>{
+        const url=URL.createObjectURL(b); const a=document.createElement('a');
+        a.href=url; a.download=`ar_${ts}.png`; document.body.appendChild(a); a.click();
+        setTimeout(()=>{URL.revokeObjectURL(url); a.remove();}, 300);
+        if (!('download' in HTMLAnchorElement.prototype)) window.open(url,'_blank');
+      }, 'image/png', 1.0);
     }
-    capBtn.addEventListener('click', capture, {passive:true});
+    document.getElementById('capBtn').addEventListener('click', capture, {passive:true});
   })();
   </script>
 </body>
