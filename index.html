@@ -3,52 +3,53 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
-  <title>AR Video – DOM background (definitive)</title>
+  <title>AR – Capture Enabled</title>
 
   <!-- 依存（順番厳守） -->
   <script src="https://aframe.io/releases/1.4.1/aframe.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.4/dist/mindar-image-aframe.prod.js"></script>
 
   <style>
-    /* 全画面レイアウト */
     html, body { margin:0; height:100%; background:#000; }
     body { overflow:hidden; -webkit-user-select:none; user-select:none; }
 
-    /* 背景のカメラ映像（自前で追加するvideo） */
+    /* 背景のカメラ映像（常に背面） */
     #bgcam{
       position:fixed; left:0; top:0; width:100vw; height:100vh;
       object-fit:cover; z-index:0; background:#000;
     }
 
-    /* A‑Frame シーンは前面に固定、キャンバスは完全透明 */
+    /* A‑Frameは前面・キャンバス透明（合成のため） */
     a-scene { position:fixed; inset:0; width:100vw; height:100vh; z-index:1; }
     canvas.a-canvas, .a-canvas { background: transparent !important; }
 
-    /* 起動ゲート（iOSの自動再生制限回避） */
-    .gate { position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
-            background:rgba(0,0,0,.6); z-index:10; }
-    .panel { color:#fff; background:rgba(0,0,0,.55); padding:14px 16px; border-radius:12px;
-             font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; text-align:center;
-             box-shadow:0 6px 18px rgba(0,0,0,.35); max-width:min(92vw,560px); }
-    button { margin-top:10px; padding:10px 14px; border:0; border-radius:10px; cursor:pointer;
-             background:#00c389; color:#10231b; font-weight:700; }
-
-    /* HUD（状態表示） */
+    /* HUD / 起動ゲート / 操作ボタン */
     #hud { position:fixed; top:8px; left:8px; z-index:9; color:#fff;
-           background:rgba(0,0,0,.5); padding:6px 8px; border-radius:8px;
-           font:12px system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; white-space:pre-line; }
-
-    /* サウンド切替（任意） */
-    #soundBtn { position:fixed; right:12px; bottom:12px; z-index:9;
-                padding:10px 12px; border:0; border-radius:10px; cursor:pointer;
-                background:rgba(0,0,0,.55); color:#fff; font:14px/1 system-ui; }
+      background:rgba(0,0,0,.5); padding:6px 8px; border-radius:8px;
+      font:12px system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; white-space:pre-line; }
+    .gate { position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
+      background:rgba(0,0,0,.6); z-index:10; }
+    .panel { color:#fff; background:rgba(0,0,0,.55); padding:14px 16px; border-radius:12px;
+      font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; text-align:center;
+      box-shadow:0 6px 18px rgba(0,0,0,.35); max-width:min(92vw,560px); }
+    button.ui {
+      position:fixed; z-index:9; border:0; border-radius:12px; cursor:pointer;
+      padding:12px 16px; font:14px/1 system-ui; color:#10231b; background:#00c389;
+      box-shadow:0 6px 18px rgba(0,0,0,.35);
+    }
+    #startBtn { position:static; background:#00c389; color:#10231b; }
+    #soundBtn { right:12px; bottom:12px; background:rgba(0,0,0,.55); color:#fff; }
+    #capBtn   { left:50%; bottom:12px; transform:translateX(-50%);
+                background:#fff; color:#111; font-weight:700; }
+    /* シャッターフラッシュ演出 */
+    #flash { position:fixed; inset:0; background:#fff; opacity:0; pointer-events:none; z-index:12; }
   </style>
 </head>
 <body>
-  <!-- 自前の背景カメラvideo（あとで srcObject を差す） -->
+  <!-- 背景カメラ -->
   <video id="bgcam" autoplay playsinline webkit-playsinline muted></video>
 
-  <!-- 起動ボタン -->
+  <!-- 起動ゲート -->
   <div id="gate" class="gate">
     <div class="panel">
       <div style="font-weight:700; margin-bottom:6px;">カメラを開始します</div>
@@ -57,24 +58,26 @@
         LINE / X の<strong>アプリ内ブラウザ</strong>では動かない場合があります。<br/>
         その場合は <strong>Safari / Chrome</strong> で開いてください。
       </div>
-      <button id="startBtn">はじめる</button>
+      <button id="startBtn" class="ui">はじめる</button>
     </div>
   </div>
 
-  <!-- HUD と サウンドボタン -->
+  <!-- HUD & 操作ボタン -->
   <div id="hud">起動待機中…</div>
-  <button id="soundBtn" title="音のオン/オフ">🔇 音OFF</button>
+  <button id="soundBtn" class="ui" title="音のオン/オフ">🔇 音OFF</button>
+  <button id="capBtn"  class="ui" title="写真を保存">📸 撮影</button>
+  <div id="flash"></div>
 
-  <!-- MindAR シーン（alpha:true でキャンバス透明化） -->
+  <!-- MindARシーン（alpha:true＋preserveDrawingBuffer:true で読み出しOK） -->
   <a-scene id="sc"
     mindar-image="imageTargetSrc: ./targets.mind; autoStart: false;"
-    renderer="alpha: true; antialias: true; precision: mediump; physicallyCorrectLights: true"
+    renderer="alpha: true; preserveDrawingBuffer: true; antialias: true; precision: mediump; physicallyCorrectLights: true"
     vr-mode-ui="enabled:false"
     device-orientation-permission-ui="enabled:true"
     embedded
   >
     <a-assets>
-      <!-- 検出で出す動画（同階層に video.mp4 を置く。不要なら削除OK） -->
+      <!-- 検出時に出す任意の動画（不要なら削除OK） -->
       <video id="pv" src="./video.mp4"
              preload="auto" loop muted playsinline webkit-playsinline crossorigin="anonymous"></video>
     </a-assets>
@@ -82,7 +85,6 @@
     <a-camera look-controls="enabled:false"></a-camera>
 
     <a-entity id="marker" mindar-image-target="targetIndex:0">
-      <!-- ターゲット上の動画（16:9例） -->
       <a-video id="videoNode" src="#pv"
                position="0 0 0.06" width="0.80" height="0.45"
                rotation="0 0 0" visible="false"></a-video>
@@ -98,48 +100,34 @@
     const gate = document.getElementById('gate');
     const hud  = document.getElementById('hud');
     const bg   = document.getElementById('bgcam');
+    const capBtn   = document.getElementById('capBtn');
+    const soundBtn = document.getElementById('soundBtn');
+    const flash = document.getElementById('flash');
 
     const marker    = document.getElementById('marker');
-    const videoEl   = document.getElementById('pv');        // （任意）ターゲット上の動画
+    const videoEl   = document.getElementById('pv');
     const videoNode = document.getElementById('videoNode');
-    const soundBtn  = document.getElementById('soundBtn');
 
     const log = (m)=>{ hud.textContent = m; };
     const waitLoaded = el => new Promise(res => el.hasLoaded ? res() : el.addEventListener('loaded', res, {once:true}));
     const sleep = (ms)=>new Promise(r=>setTimeout(r,ms));
 
-    // ---- MindARが作るカメラvideoを探し、そのMediaStreamを#bgcamに差す ----
+    // MindARが作る内部videoのMediaStreamを#bgcamに流す
     async function attachMindarStreamToBackground(){
-      // MindAR内部videoは start() 後に生成されるのでポーリング
       let tries = 0, camVideo = null;
       while(tries++ < 50 && !camVideo){
         const vids = Array.from(document.querySelectorAll('video'));
         camVideo = vids.find(v => v !== bg && v !== videoEl && v.srcObject);
         if (!camVideo) await sleep(100);
       }
-      if (!camVideo){
-        log('カメラ映像を取得できませんでした（video要素未検出）'); return;
-      }
-
-      // デバッグ：発見したvideoの状態をHUDに
-      const st = camVideo.srcObject;
-      const info =
-        `カメラ接続: OK
-video.id: ${camVideo.id || '(no id)'}
-readyState: ${camVideo.readyState} paused: ${camVideo.paused}
-videoWidth×videoHeight: ${camVideo.videoWidth}×${camVideo.videoHeight}
-tracks: ${(st && st.getVideoTracks && st.getVideoTracks()[0] && st.getVideoTracks()[0].label) || 'n/a'}`;
-      log(info);
-
-      // 背景videoへ同じストリームを差す
-      bg.srcObject = st;
+      if (!camVideo){ log('カメラ映像が見つかりません'); return; }
+      bg.srcObject = camVideo.srcObject;
       bg.setAttribute('playsinline',''); bg.setAttribute('webkit-playsinline','');
-      try { await bg.play(); } catch(e){ /* 端末により無音/ユーザー操作後でOK */ }
+      try { await bg.play(); } catch(e) {}
+      log('arReady：カメラ起動');
     }
 
-    // ---- 状態表示＆検出ハンドラ ----
-    sc.addEventListener('arError', ()=>log('arError：権限/HTTPS/ブラウザを確認してください'));
-    sc.addEventListener('arReady', ()=>log('arReady：カメラ起動'));
+    // 検出ハンドラ
     marker.addEventListener('targetFound', async ()=>{
       log((hud.textContent ? hud.textContent+'\n' : '') + 'targetFound：検出OK（動画再生）');
       if (videoEl){ try { videoNode.setAttribute('visible', true); await videoEl.play(); } catch(_) {} }
@@ -149,35 +137,26 @@ tracks: ${(st && st.getVideoTracks && st.getVideoTracks()[0] && st.getVideoTrack
       if (videoEl){ videoEl.pause(); videoNode.setAttribute('visible', false); }
     });
 
-    // ---- 起動：権限→シーン初期化→MindAR開始→背景接続 ----
+    // 起動：権限→シーン初期化→MindAR開始→背景接続
     document.getElementById('startBtn').addEventListener('click', async ()=>{
       try{
-        // ① カメラ権限（iOS安定化のため先に要求）
         const pre = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:{ ideal:'environment' } }, audio:false });
-        pre.getTracks().forEach(t => t.stop()); // MindARが自前で開き直すため停止
-
-        // ② ターゲット動画の自動再生権も確保（すぐ停止）
+        pre.getTracks().forEach(t => t.stop());
         if (videoEl){ try { await videoEl.play(); videoEl.pause(); videoEl.currentTime = 0; } catch(_) {} }
 
-        // ③ A‑Frameシーン準備完了を待つ
         await waitLoaded(sc);
-
-        // ④ MindAR開始
         const sys = sc.systems && sc.systems['mindar-image-system'];
         if (!sys){ log('初期化エラー：mindar-image-system 取得失敗'); return; }
         await sys.start();
 
-        // ⑤ 背景にカメラ映像を接続（同じMediaStreamを #bgcam に表示）
         await attachMindarStreamToBackground();
-
-        // UI整理
         gate.style.display = 'none';
       }catch(e){
         log(`起動エラー：${e.name || ''} ${e.message || e}`);
       }
     }, {passive:true});
 
-    // ---- 音のオン/オフ切替（任意） ----
+    // 音のオン/オフ切替
     soundBtn.addEventListener('click', async ()=>{
       if (!videoEl) return;
       const muted = !(videoEl.muted === false);
@@ -185,6 +164,72 @@ tracks: ${(st && st.getVideoTracks && st.getVideoTracks()[0] && st.getVideoTrack
       soundBtn.textContent = muted ? '🔊 音ON' : '🔇 音OFF';
       try{ await videoEl.play(); }catch(_){}
     });
+
+    // --------- 📸 撮影処理 ----------
+    function drawVideoCover(ctx, video, dw, dh){
+      // CSSの object-fit:cover 相当で描画
+      const vw = video.videoWidth || video.width || 1280;
+      const vh = video.videoHeight || video.height || 720;
+      const scale = Math.max(dw / vw, dh / vh);
+      const w = Math.round(vw * scale);
+      const h = Math.round(vh * scale);
+      const dx = Math.round((dw - w) / 2);
+      const dy = Math.round((dh - h) / 2);
+      ctx.drawImage(video, 0, 0, vw, vh, dx, dy, w, h);
+    }
+
+    async function capture(){
+      const webgl = document.querySelector('canvas.a-canvas');
+      if (!webgl){ log('撮影エラー：WebGLキャンバスが見つかりません'); return; }
+
+      // 端末ピクセル比で高解像度出力
+      const dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+      const W = Math.round(window.innerWidth  * dpr);
+      const H = Math.round(window.innerHeight * dpr);
+
+      const shot = document.createElement('canvas');
+      shot.width = W; shot.height = H;
+      const ctx = shot.getContext('2d', {alpha:true});
+      ctx.imageSmoothingEnabled = true;
+
+      // 1) 背景（カメラ映像）
+      if (bg && (bg.readyState >= 2 || bg.srcObject)) {
+        drawVideoCover(ctx, bg, W, H);
+      } else {
+        ctx.fillStyle = '#000'; ctx.fillRect(0,0,W,H);
+      }
+      // 2) ARオーバーレイ（WebGLキャンバス）
+      ctx.drawImage(webgl, 0, 0, W, H);
+
+      // シャッターフラッシュ
+      flash.style.transition = 'none'; flash.style.opacity = '1';
+      requestAnimationFrame(()=>{ flash.style.transition = 'opacity 140ms ease-out'; flash.style.opacity = '0'; });
+
+      // 保存（iOS対策：download不可なら新規タブ）
+      const filename = (()=> {
+        const d = new Date();
+        const z = n => String(n).padStart(2,'0');
+        return `ar_${d.getFullYear()}${z(d.getMonth()+1)}${z(d.getDate())}_${z(d.getHours())}${z(d.getMinutes())}${z(d.getSeconds())}.png`;
+      })();
+
+      if (shot.toBlob){
+        shot.toBlob(blob=>{
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url; a.download = filename;
+          document.body.appendChild(a); a.click();
+          setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); }, 300);
+          // iOSの一部でdownload不可 → 新規タブで表示
+          if (!('download' in HTMLAnchorElement.prototype)) window.open(url,'_blank');
+        }, 'image/png', 1.0);
+      } else {
+        const data = shot.toDataURL('image/png');
+        const a = document.createElement('a');
+        a.href = data; a.download = filename; a.click();
+        window.open(data, '_blank');
+      }
+    }
+    capBtn.addEventListener('click', capture, {passive:true});
   })();
   </script>
 </body>
