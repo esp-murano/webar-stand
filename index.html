@@ -3,60 +3,40 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
-  <title>AR Video on Target – black screen fix</title>
+  <title>AR Video – background via VideoTexture</title>
 
   <!-- 依存（順番厳守） -->
   <script src="https://aframe.io/releases/1.4.1/aframe.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.4/dist/mindar-image-aframe.prod.js"></script>
 
   <style>
-    /* 全画面＆余白なし */
     html, body { margin:0; height:100%; background:#000; }
     body { overflow:hidden; -webkit-user-select:none; user-select:none; }
-
-    /* A-Frameキャンバスは最前面、背景は透過に */
+    /* a-scene を前面に全画面固定（背景はWebGLで描くので alpha: false にします） */
     a-scene { position:fixed; inset:0; width:100vw; height:100vh; z-index:1; }
-    canvas.a-canvas, .a-canvas { background: transparent !important; }
 
-    /* MindARが作るカメラvideoを“背面0”に固定（IDが端末／版で異なるため複数指定） */
-    #mindar-image-video, #mindar-video, #mindar-face-video, .mindar-camera, video.mindar-video {
-      position:fixed !important; left:0 !important; top:0 !important;
-      width:100vw !important; height:100vh !important; object-fit:cover !important;
-      z-index:0 !important; opacity:1 !important; background:#000 !important;
-    }
-
-    /* 起動ゲート（iOS向け：ユーザー操作で開始） */
-    .gate {
-      position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
-      background:rgba(0,0,0,.6); z-index:10;
-    }
-    .panel {
-      color:#fff; background:rgba(0,0,0,.55); padding:14px 16px; border-radius:12px;
-      font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; text-align:center;
-      box-shadow:0 6px 18px rgba(0,0,0,.35); max-width:min(92vw,560px);
-    }
-    button {
-      margin-top:10px; padding:10px 14px; border:0; border-radius:10px; cursor:pointer;
-      background:#00c389; color:#10231b; font-weight:700;
-    }
+    /* 起動ゲート（iOS対策：ユーザー操作で開始） */
+    .gate { position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
+            background:rgba(0,0,0,.6); z-index:10; }
+    .panel { color:#fff; background:rgba(0,0,0,.55); padding:14px 16px; border-radius:12px;
+             font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; text-align:center;
+             box-shadow:0 6px 18px rgba(0,0,0,.35); max-width:min(92vw,560px); }
+    button { margin-top:10px; padding:10px 14px; border:0; border-radius:10px; cursor:pointer;
+             background:#00c389; color:#10231b; font-weight:700; }
 
     /* HUD（状態表示） */
-    #hud {
-      position:fixed; top:8px; left:8px; z-index:9;
-      color:#fff; background:rgba(0,0,0,.5); padding:6px 8px; border-radius:8px;
-      font:12px system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
-    }
+    #hud { position:fixed; top:8px; left:8px; z-index:9; color:#fff;
+           background:rgba(0,0,0,.5); padding:6px 8px; border-radius:8px;
+           font:12px system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
 
-    /* サウンド切替ボタン（任意） */
-    #soundBtn {
-      position:fixed; right:12px; bottom:12px; z-index:9;
-      padding:10px 12px; border:0; border-radius:10px; cursor:pointer;
-      background:rgba(0,0,0,.55); color:#fff; font:14px/1 system-ui;
-    }
+    /* サウンド切替（任意） */
+    #soundBtn { position:fixed; right:12px; bottom:12px; z-index:9;
+                padding:10px 12px; border:0; border-radius:10px; cursor:pointer;
+                background:rgba(0,0,0,.55); color:#fff; font:14px/1 system-ui; }
   </style>
 </head>
 <body>
-  <!-- 起動ボタン（iOSの自動再生制限を回避） -->
+  <!-- 起動ボタン -->
   <div id="gate" class="gate">
     <div class="panel">
       <div style="font-weight:700; margin-bottom:6px;">カメラを開始します</div>
@@ -73,33 +53,30 @@
   <div id="hud">起動待機中…</div>
   <button id="soundBtn" title="音のオン/オフ">🔇 音OFF</button>
 
-  <!-- MindARシーン（alpha:true でキャンバス透明化） -->
+  <!-- MindAR シーン（★ alpha:false：背景はWebGLで描画する） -->
   <a-scene id="sc"
     mindar-image="imageTargetSrc: ./targets.mind; autoStart: false;"
-    color-space="sRGB"
-    renderer="alpha: true; precision: mediump; antialias: true; physicallyCorrectLights: true"
+    renderer="alpha: false; antialias: true; precision: mediump; physicallyCorrectLights: true"
     vr-mode-ui="enabled:false"
     device-orientation-permission-ui="enabled:true"
     embedded
   >
     <a-assets>
-      <!-- 検出時に出す動画（同じフォルダに video.mp4 を置く） -->
+      <!-- 検出で出す動画（任意）。不要ならこのブロックごと削除OK -->
       <video id="pv" src="./video.mp4"
-             preload="auto" loop muted playsinline webkit-playsinline
-             crossorigin="anonymous"></video>
+             preload="auto" loop muted playsinline webkit-playsinline crossorigin="anonymous"></video>
     </a-assets>
 
     <a-camera look-controls="enabled:false"></a-camera>
 
     <!-- 検出ターゲット（index:0） -->
     <a-entity id="marker" mindar-image-target="targetIndex:0">
-      <!-- 動画プレーン（16:9の例。サイズは任意で調整） -->
+      <!-- 動画プレーン（16:9の例） -->
       <a-video id="videoNode" src="#pv"
                position="0 0 0.06" width="0.80" height="0.45"
                rotation="0 0 0" visible="false"></a-video>
     </a-entity>
 
-    <!-- ライト（他オブジェクト用。動画だけなら影響なし） -->
     <a-entity light="type: ambient; intensity:0.9"></a-entity>
     <a-entity light="type: directional; intensity:0.6" position="1 1 1"></a-entity>
   </a-scene>
@@ -110,58 +87,58 @@
     const gate = document.getElementById('gate');
     const hud  = document.getElementById('hud');
     const soundBtn = document.getElementById('soundBtn');
-    const videoEl  = document.getElementById('pv');
-    const videoNode= document.getElementById('videoNode');
     const marker   = document.getElementById('marker');
 
+    const videoEl   = document.getElementById('pv');         // 任意の再生用動画
+    const videoNode = document.getElementById('videoNode');  // その表示ノード
     const log = (m)=>{ hud.textContent = m; };
+
     const waitLoaded = el => new Promise(res => el.hasLoaded ? res() : el.addEventListener('loaded', res, {once:true}));
 
-    // MindARが生成したカメラvideoを“見える”ように整える
-    function styleMindarCameraVideo(){
-      // 候補のvideoから「カメラ用」を探す（自前の#pvは除外）
-      const vids = Array.from(document.querySelectorAll('video'))
-        .filter(v => v !== videoEl)
-        .filter(v => /mindar|camera|video/i.test(v.id) || v.srcObject);
+    // ---- 背景にカメラ映像を“WebGLテクスチャ”として適用 ----
+    function applyCameraAsBackground(){
+      const THREE = AFRAME.THREE;
+      // MindAR が作ったカメラ用 <video> を特定（srcObject があるもの）
+      const camVideo = Array.from(document.querySelectorAll('video')).find(v => v.srcObject);
+      if (!camVideo){ log('背景動画が見つかりません'); return; }
 
-      const v = vids[0];
-      if (!v) return;
+      // iOS向けに playsinline 指定（念のため）
+      camVideo.setAttribute('playsinline',''); camVideo.setAttribute('webkit-playsinline','');
 
-      v.setAttribute('playsinline','');
-      v.setAttribute('webkit-playsinline','');
-      Object.assign(v.style, {
-        position:'fixed', left:'0', top:'0',
-        width:'100vw', height:'100vh',
-        objectFit:'cover',
-        zIndex:'0', opacity:'1', background:'#000'
-      });
+      try { camVideo.play().catch(()=>{}); } catch(_){}
 
-      const canvas = document.querySelector('canvas.a-canvas');
-      if (canvas) canvas.style.zIndex = '1';
+      // VideoTexture をシーン背景にセット
+      const tex = new THREE.VideoTexture(camVideo);
+      if ('colorSpace' in tex) { tex.colorSpace = THREE.SRGBColorSpace; } else { tex.encoding = THREE.sRGBEncoding; }
+      tex.minFilter = THREE.LinearFilter; tex.magFilter = THREE.LinearFilter;
+      tex.format = THREE.RGBFormat;
+
+      sc.object3D.background = tex;
+      log('arReady：カメラ起動（背景適用済）。ターゲットにかざしてください');
     }
 
-    // 状態表示
-    sc.addEventListener('arReady', ()=>log('arReady：カメラ起動。ターゲットにかざしてください'));
+    // ---- 状態表示 ----
+    sc.addEventListener('arReady', ()=>{ /* 背景適用は start() 後に呼ぶ */ });
     sc.addEventListener('arError', ()=>log('arError：権限/HTTPS/ブラウザを確認してください'));
     marker.addEventListener('targetFound', async ()=>{
       log('targetFound：検出OK（動画再生）');
-      try { videoNode.setAttribute('visible', true); await videoEl.play(); } catch(e) {}
+      if (videoEl) { try { videoNode.setAttribute('visible', true); await videoEl.play(); } catch(_) {} }
     });
     marker.addEventListener('targetLost', ()=>{
       log('targetLost：見失い（動画一時停止）');
-      videoEl.pause(); videoNode.setAttribute('visible', false);
+      if (videoEl) { videoEl.pause(); videoNode.setAttribute('visible', false); }
     });
 
-    // 起動：権限取得 → シーン初期化 → MindAR開始 → カメラvideoをスタイル調整
+    // ---- 起動：権限取得 → シーン初期化 → MindAR開始 → 背景適用 ----
     document.getElementById('startBtn').addEventListener('click', async ()=>{
       try{
         // ① カメラ権限（iOS安定化）
         const s = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:{ ideal:'environment' } }, audio:false });
-        // 許可後すぐ停止（MindARが自前で開き直す）
+        // 権限だけ取ったら停止（MindARが自前で開く）
         s.getTracks().forEach(t => t.stop());
 
-        // ② 自前動画の自動再生権も確保（すぐ止める）
-        try { await videoEl.play(); videoEl.pause(); videoEl.currentTime = 0; } catch(_){}
+        // ② 任意の動画の自動再生権も確保（すぐ停止）
+        if (videoEl){ try { await videoEl.play(); videoEl.pause(); videoEl.currentTime = 0; } catch(_) {} }
 
         // ③ A‑Frameシーンの初期化完了を待つ
         await waitLoaded(sc);
@@ -171,19 +148,20 @@
         if (!sys){ log('初期化エラー：mindar-image-system 取得失敗'); return; }
         await sys.start();
 
-        // ⑤ UI整理＆カメラvideoを背面に整形
+        // ⑤ 背景にカメラ VideoTexture を適用
+        //    MindAR の内部 video が生成・再生されるタイミング差があるため少し待ってから適用
+        setTimeout(applyCameraAsBackground, 120);
+
+        // UI整理
         gate.style.display = 'none';
-        log('起動しました：ターゲットにかざしてください');
-        styleMindarCameraVideo();
-        // 念のため遅延でもう一度（端末によって生成タイミングがズレる）
-        setTimeout(styleMindarCameraVideo, 300);
       }catch(e){
         log(`起動エラー：${e.name || ''} ${e.message || e}`);
       }
     }, {passive:true});
 
-    // 音のオン/オフ切替
+    // ---- 音のオン/オフ切替（任意） ----
     soundBtn.addEventListener('click', async ()=>{
+      if (!videoEl) return;
       const muted = !(videoEl.muted === false);
       videoEl.muted = !muted;
       soundBtn.textContent = muted ? '🔊 音ON' : '🔇 音OFF';
