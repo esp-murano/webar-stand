@@ -1,45 +1,32 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
-  <title>AR – All-in-One (stable + capture)</title>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
+<title>AR – All-in-One (Android video robust)</title>
 
-  <!-- 依存（順番厳守） -->
-  <script src="https://aframe.io/releases/1.4.1/aframe.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.4/dist/mindar-image-aframe.prod.js"></script>
+<!-- 依存（順番厳守） -->
+<script src="https://aframe.io/releases/1.4.1/aframe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.4/dist/mindar-image-aframe.prod.js"></script>
 
-  <style>
-    html, body { margin:0; height:100%; background:#000; }
-    body { overflow:hidden; -webkit-user-select:none; user-select:none; }
-
-    /* 背景カメラ（常に背面） */
-    #bgcam{
-      position:fixed; left:0; top:0; width:100vw; height:100vh;
-      object-fit:cover; z-index:0; background:#000;
-    }
-
-    /* A‑Frame は前面・キャンバス透明（合成のため） */
-    a-scene { position:fixed; inset:0; width:100vw; height:100vh; z-index:1; }
-    canvas.a-canvas, .a-canvas { background: transparent !important; }
-
-    /* UI */
-    #hud { position:fixed; top:8px; left:8px; z-index:9; color:#fff;
-           background:rgba(0,0,0,.5); padding:6px 8px; border-radius:8px;
-           font:12px system-ui; white-space:pre-line; }
-    .gate { position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
-            background:rgba(0,0,0,.6); z-index:10; }
-    .panel { color:#fff; background:rgba(0,0,0,.55); padding:14px 16px; border-radius:12px;
-             font:14px/1.5 system-ui; text-align:center; box-shadow:0 6px 18px rgba(0,0,0,.35);
-             max-width:min(92vw,560px); }
-    button.ui { position:fixed; z-index:9; border:0; border-radius:12px; cursor:pointer;
-                padding:12px 16px; font:14px/1 system-ui; color:#10231b; background:#00c389;
-                box-shadow:0 6px 18px rgba(0,0,0,.35); }
-    #startBtn { position:static; background:#00c389; color:#10231b; }
-    #soundBtn { right:12px; bottom:12px; background:rgba(0,0,0,.55); color:#fff; }
-    #capBtn   { left:50%; bottom:12px; transform:translateX(-50%); background:#fff; color:#111; font-weight:700; }
-    #flash { position:fixed; inset:0; background:#fff; opacity:0; pointer-events:none; z-index:12; }
-  </style>
+<style>
+  html, body { margin:0; height:100%; background:#000; }
+  body { overflow:hidden; -webkit-user-select:none; user-select:none; }
+  /* 背景カメラ（常に背面） */
+  #bgcam{ position:fixed; left:0; top:0; width:100vw; height:100vh; object-fit:cover; z-index:0; background:#000; }
+  /* A‑Frameは前面・キャンバス透明（合成のため） */
+  a-scene{ position:fixed; inset:0; width:100vw; height:100vh; z-index:1; }
+  canvas.a-canvas, .a-canvas{ background:transparent !important; }
+  /* UI */
+  #hud{ position:fixed; top:8px; left:8px; z-index:9; color:#fff; background:rgba(0,0,0,.5); padding:6px 8px; border-radius:8px; font:12px system-ui; white-space:pre-line; }
+  .gate{ position:fixed; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,.6); z-index:10; }
+  .panel{ color:#fff; background:rgba(0,0,0,.55); padding:14px 16px; border-radius:12px; font:14px/1.5 system-ui; text-align:center; box-shadow:0 6px 18px rgba(0,0,0,.35); max-width:min(92vw,560px); }
+  button.ui{ position:fixed; z-index:9; border:0; border-radius:12px; cursor:pointer; padding:12px 16px; font:14px/1 system-ui; color:#10231b; background:#00c389; box-shadow:0 6px 18px rgba(0,0,0,.35); }
+  #startBtn{ position:static; background:#00c389; color:#10231b; }
+  #soundBtn{ right:12px; bottom:12px; background:rgba(0,0,0,.55); color:#fff; }
+  #capBtn{ left:50%; bottom:12px; transform:translateX(-50%); background:#fff; color:#111; font-weight:700; }
+  #flash{ position:fixed; inset:0; background:#fff; opacity:0; pointer-events:none; z-index:12; }
+</style>
 </head>
 <body>
   <!-- 背景カメラ -->
@@ -52,7 +39,7 @@
       <div style="opacity:.95;">
         明るい場所で、イラスト全体が入るように少し離れてください。<br/>
         LINE / X の<strong>アプリ内ブラウザ</strong>では動かない場合があります。<br/>
-        その場合は <strong>Safari / Chrome</strong> で開いてください。
+        その場合は <strong>Chrome / Safari</strong> で開いてください。
       </div>
       <button id="startBtn" class="ui">はじめる</button>
     </div>
@@ -64,15 +51,15 @@
   <button id="capBtn"  class="ui" title="写真を保存">📸 撮影</button>
   <div id="flash"></div>
 
-  <!-- シーン（★ iOS安定化パラメータ＋保存用 preserveDrawingBuffer） -->
+  <!-- シーン（認識安定＋保存用 preserveDrawingBuffer） -->
   <a-scene id="sc"
     mindar-image="
       imageTargetSrc: ./targets.mind;
       autoStart: false;
-      filterMinCF: 0.006;   /* 低信頼フレームは採用しない */
-      filterBeta: 0.05;     /* 追跡の平滑化を強める */
-      warmupTolerance: 3;   /* 3連続ヒットで確定（パカつき防止） */
-      missTolerance: 10;    /* 10フレーム外れても即ロストにしない */
+      filterMinCF: 0.006;
+      filterBeta: 0.05;
+      warmupTolerance: 3;
+      missTolerance: 10;
       maxTrack: 1;
     "
     renderer="alpha: true; preserveDrawingBuffer: true; antialias: true; precision: mediump; physicallyCorrectLights: true"
@@ -80,24 +67,24 @@
     device-orientation-permission-ui="enabled:true"
     embedded
   >
-    <a-assets>
-      <!-- 検出で出す動画（不要なら削除OK） -->
-      <video id="pv" src="./video.mp4"
-             preload="auto" loop muted playsinline webkit-playsinline crossorigin="anonymous"></video>
+    <a-assets timeout="40000">
+      <!-- ★ Android互換を高める属性を付与（muted/playsinline/autoplay/loop/type） -->
+      <video id="pv" src="./video.mp4" type="video/mp4"
+             preload="auto" autoplay muted playsinline webkit-playsinline loop
+             crossorigin="anonymous" disablepictureinpicture controlslist="nodownload noplaybackrate"></video>
     </a-assets>
 
     <a-camera look-controls="enabled:false"></a-camera>
 
-    <!-- 生の追跡ノード（MindARが更新） -->
+    <!-- 生の追跡ノード -->
     <a-entity id="raw" mindar-image-target="targetIndex:0"></a-entity>
 
-    <!-- 平滑化ノード（ここに表示物をぶら下げる） -->
+    <!-- 平滑化ノード（表示系はここへ） -->
     <a-entity id="smooth" pose-smoother="pos:0.18; rot:0.18; scale:0.18">
-      <!-- 例：ターゲット上の動画（16:9） -->
-      <a-video id="videoNode" src="#pv"
+      <!-- 16:9 動画（shader:flat で色誤差減＆軽量） -->
+      <a-video id="videoNode" src="#pv" material="shader:flat"
                position="0 0 0.06" width="0.80" height="0.45"
                rotation="0 0 0" visible="false"></a-video>
-      <!-- GLBを出す場合はここに <a-entity gltf-model="./model.glb"> ... -->
     </a-entity>
 
     <a-entity light="type: ambient; intensity:0.9"></a-entity>
@@ -105,132 +92,162 @@
   </a-scene>
 
   <script>
-  // ====== 平滑化コンポーネント（生raw→smoothへローパス） ======
+  // --- 平滑化 ---
   AFRAME.registerComponent('pose-smoother', {
-    schema: {pos:{default:0.18}, rot:{default:0.18}, scale:{default:0.18}},
-    init(){
-      this.raw = document.getElementById('raw').object3D;
-      this.obj = this.el.object3D;
-      this.qTmp = new AFRAME.THREE.Quaternion();
-    },
-    tick(t,dt){
-      if (!this.raw) return;
-      const dtms = Math.max(1, dt||16);
-      const lerpP = 1 - Math.pow(1 - this.data.pos,   dtms/16);
-      const lerpR = 1 - Math.pow(1 - this.data.rot,   dtms/16);
-      const lerpS = 1 - Math.pow(1 - this.data.scale, dtms/16);
-      // 位置
-      this.obj.position.lerp(this.raw.position, lerpP);
-      // 回転（クォータニオン補間）
-      this.qTmp.copy(this.obj.quaternion).slerp(this.raw.quaternion, lerpR);
-      this.obj.quaternion.copy(this.qTmp);
-      // スケール
-      this.obj.scale.lerp(this.raw.scale, lerpS);
+    schema:{pos:{default:0.18}, rot:{default:0.18}, scale:{default:0.18}},
+    init(){ this.raw=document.getElementById('raw').object3D; this.obj=this.el.object3D; this.q=new AFRAME.THREE.Quaternion(); },
+    tick(t,dt){ if(!this.raw) return; const d=Math.max(1,dt||16);
+      const lp=1-Math.pow(1-this.data.pos,d/16), lr=1-Math.pow(1-this.data.rot,d/16), ls=1-Math.pow(1-this.data.scale,d/16);
+      this.obj.position.lerp(this.raw.position, lp);
+      this.q.copy(this.obj.quaternion).slerp(this.raw.quaternion, lr); this.obj.quaternion.copy(this.q);
+      this.obj.scale.lerp(this.raw.scale, ls);
     }
   });
   </script>
 
   <script>
   (function(){
-    const sc   = document.getElementById('sc');
-    const gate = document.getElementById('gate');
-    const hud  = document.getElementById('hud');
-    const bg   = document.getElementById('bgcam');
-    const capBtn   = document.getElementById('capBtn');
-    const soundBtn = document.getElementById('soundBtn');
-    const flash = document.getElementById('flash');
+    const sc=document.getElementById('sc');
+    const gate=document.getElementById('gate');
+    const hud=document.getElementById('hud');
+    const bg=document.getElementById('bgcam');
+    const soundBtn=document.getElementById('soundBtn');
+    const capBtn=document.getElementById('capBtn'); const flash=document.getElementById('flash');
 
-    const raw       = document.getElementById('raw');
-    const videoEl   = document.getElementById('pv');
-    const videoNode = document.getElementById('videoNode');
+    const raw=document.getElementById('raw');
+    const videoEl=document.getElementById('pv');         // <video> in assets
+    const videoNode=document.getElementById('videoNode');// <a-video>
+    const isAndroid = /Android/i.test(navigator.userAgent);
 
-    const log = (m)=>{ hud.textContent = m; };
-    const waitLoaded = el => new Promise(res => el.hasLoaded ? res() : el.addEventListener('loaded', res, {once:true}));
-    const sleep = (ms)=>new Promise(r=>setTimeout(r,ms));
+    const log=(m)=>{ hud.textContent=m; };
+    const sleep=(ms)=>new Promise(r=>setTimeout(r,ms));
+    const waitLoaded=el=>new Promise(res=>el.hasLoaded?res():el.addEventListener('loaded',res,{once:true}));
+    const waitCanPlay=(v)=>new Promise(res=>{
+      if (v.readyState>=2) return res();
+      const h=()=>{ v.removeEventListener('canplay',h); v.removeEventListener('loadeddata',h); res(); };
+      v.addEventListener('canplay',h,{once:true}); v.addEventListener('loadeddata',h,{once:true});
+      setTimeout(()=>{ if(v.readyState>=2) res(); }, 1200);
+    });
 
-    // MindAR内部のカメラvideoを見つけ、そのMediaStreamを #bgcam に差す
-    async function attachMindarStreamToBackground(){
-      let tries = 0, camVideo = null;
-      while(tries++ < 50 && !camVideo){
-        const vids = Array.from(document.querySelectorAll('video'));
-        camVideo = vids.find(v => v !== bg && v !== videoEl && v.srcObject);
-        if (!camVideo) await sleep(100);
+    // ---- Android向け: 再生リトライ関数 ----
+    async function playWithRetry(v, tries=4){
+      v.muted = true; v.defaultMuted = true; // 自動再生ポリシー回避
+      v.playsInline = true;
+      for (let i=0;i<tries;i++){
+        try{
+          await waitCanPlay(v);
+          const p = v.play();
+          if (p && p.catch) await p;
+          if (!v.paused && v.currentTime>0) return true;
+        }catch(e){}
+        // 一部端末は reload が必要
+        try { v.pause(); v.load(); } catch(_) {}
+        await sleep(200);
       }
-      if (!camVideo){ log('カメラ映像が見つかりません'); return; }
-      bg.srcObject = camVideo.srcObject;
+      return false;
+    }
+
+    // MindAR内部のカメラvideoを #bgcam に表示
+    async function attachMindarStreamToBackground(){
+      let tries=0, camVideo=null;
+      while(tries++<60 && !camVideo){
+        const vids=Array.from(document.querySelectorAll('video'));
+        camVideo=vids.find(v=>v!==bg && v!==videoEl && v.srcObject);
+        if(!camVideo) await sleep(100);
+      }
+      if(!camVideo){ log('カメラ映像が見つかりません'); return; }
+      bg.srcObject=camVideo.srcObject;
       bg.setAttribute('playsinline',''); bg.setAttribute('webkit-playsinline','');
-      try { await bg.play(); } catch(e) {}
+      try{ await bg.play(); }catch(_){}
       log('arReady：カメラ起動');
     }
 
+    // ---- 動画のエラーハンドリング（Androidはここが発火しやすい） ----
+    const onVideoError = ()=>{
+      const err = videoEl.error;
+      log(`動画エラー: ${err ? (err.message || 'code '+err.code) : 'unknown'}\n直リンク再生できるか / コーデック(H.264/AAC)を確認`);
+    };
+    videoEl.addEventListener('error', onVideoError);
+    videoEl.addEventListener('stalled', ()=>log('動画stalled：再試行中…'));
+    videoEl.addEventListener('waiting', ()=>log('動画waiting：バッファ待ち…'));
+
     // 検出イベント（rawに付く）
     raw.addEventListener('targetFound', async ()=>{
-      log((hud.textContent ? hud.textContent+'\n' : '') + 'targetFound：検出OK（動画再生）');
-      if (videoEl){ try { videoNode.setAttribute('visible', true); await videoEl.play(); } catch(_) {} }
+      log((hud.textContent?hud.textContent+'\n':'')+'targetFound：検出OK（動画再生）');
+      videoNode.setAttribute('visible', true);
+      // Androidで失敗しやすいのでリトライ付きで再生
+      const ok = await playWithRetry(videoEl, isAndroid ? 6 : 3);
+      if (!ok) log('再生に失敗しました。端末の省電力やデータセーバー設定を確認してください。');
     });
     raw.addEventListener('targetLost', ()=>{
-      log((hud.textContent ? hud.textContent+'\n' : '') + 'targetLost：見失い（動画一時停止）');
-      if (videoEl){ videoEl.pause(); videoNode.setAttribute('visible', false); }
+      log((hud.textContent?hud.textContent+'\n':'')+'targetLost：見失い（動画一時停止）');
+      try { videoEl.pause(); } catch(_){}
+      videoNode.setAttribute('visible', false);
     });
 
-    // 起動：権限→シーン初期化→MindAR開始→背景接続
+    // 起動：権限→シーン初期化→MindAR開始→背景接続→（Android: ウォームアップ）
     document.getElementById('startBtn').addEventListener('click', async ()=>{
       try{
-        const pre = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:{ ideal:'environment' } }, audio:false });
-        pre.getTracks().forEach(t => t.stop());
-        if (videoEl){ try { await videoEl.play(); videoEl.pause(); videoEl.currentTime = 0; } catch(_) {} }
+        const pre=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}},audio:false});
+        pre.getTracks().forEach(t=>t.stop());
 
         await waitLoaded(sc);
-        const sys = sc.systems && sc.systems['mindar-image-system'];
-        if (!sys){ log('初期化エラー：mindar-image-system 取得失敗'); return; }
+        const sys=sc.systems && sc.systems['mindar-image-system'];
+        if(!sys){ log('初期化エラー：mindar-image-system 取得失敗'); return; }
         await sys.start();
 
         await attachMindarStreamToBackground();
-        gate.style.display = 'none';
+
+        // ★ Androidはここでウォームアップしておく（ユーザー操作直後）
+        if (isAndroid){
+          try{ await playWithRetry(videoEl, 4); videoEl.pause(); videoEl.currentTime=0; }catch(_){}
+        }
+
+        gate.style.display='none';
       }catch(e){
-        log(`起動エラー：${e.name || ''} ${e.message || e}`);
+        log(`起動エラー：${e.name||''} ${e.message||e}`);
       }
     }, {passive:true});
 
-    // 音オン/オフ
+    // 画面復帰時の再生リカバリ（Androidでよく止まる）
+    document.addEventListener('visibilitychange', async ()=>{
+      if (!document.hidden && videoNode.getAttribute('visible')) {
+        await playWithRetry(videoEl, 3);
+      }
+    });
+
+    // 画面タップでの強制再開（ユーザー操作トリガ）
+    document.body.addEventListener('touchstart', async ()=>{
+      if (videoNode.getAttribute('visible') && videoEl.paused){
+        await playWithRetry(videoEl, 3);
+      }
+    }, {passive:true});
+
+    // 音オン/オフ（ユーザー操作なのでiOS/Androidで有効）
     soundBtn.addEventListener('click', async ()=>{
-      if (!videoEl) return;
-      const muted = !(videoEl.muted === false);
-      videoEl.muted = !muted;
+      const muted=!(videoEl.muted===false);
+      videoEl.muted=!muted;
       soundBtn.textContent = muted ? '🔊 音ON' : '🔇 音OFF';
-      try{ await videoEl.play(); }catch(_){}
+      try{ await playWithRetry(videoEl, 2); }catch(_){}
     });
 
     // 📸撮影：#bgcam + WebGLキャンバスを合成保存
     function drawVideoCover(ctx, video, dw, dh){
-      const vw = video.videoWidth || 1280, vh = video.videoHeight || 720;
-      const scale = Math.max(dw/vw, dh/vh), w = vw*scale, h = vh*scale;
-      const dx = (dw - w)/2, dy = (dh - h)/2;
-      ctx.drawImage(video, 0, 0, vw, vh, dx, dy, w, h);
+      const vw=video.videoWidth||1280, vh=video.videoHeight||720;
+      const s=Math.max(dw/vw, dh/vh), w=vw*s, h=vh*s, dx=(dw-w)/2, dy=(dh-h)/2;
+      ctx.drawImage(video,0,0,vw,vh, dx,dy,w,h);
     }
-    async function capture(){
-      const webgl = document.querySelector('canvas.a-canvas');
-      if (!webgl){ log('撮影エラー：WebGLキャンバス未検出'); return; }
-      const dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
-      const W = Math.round(window.innerWidth  * dpr);
-      const H = Math.round(window.innerHeight * dpr);
-      const c = document.createElement('canvas'); c.width = W; c.height = H;
-      const ctx = c.getContext('2d', {alpha:true});
-      if (bg && (bg.readyState >= 2 || bg.srcObject)) drawVideoCover(ctx, bg, W, H); else { ctx.fillStyle='#000'; ctx.fillRect(0,0,W,H); }
-      ctx.drawImage(webgl, 0, 0, W, H);
-      // フラッシュ
-      flash.style.transition='none'; flash.style.opacity='1';
-      requestAnimationFrame(()=>{ flash.style.transition='opacity 140ms ease-out'; flash.style.opacity='0'; });
-      // 保存
-      const ts=(()=>{const d=new Date(),z=n=>String(n).padStart(2,'0');return `${d.getFullYear()}${z(d.getMonth()+1)}${z(d.getDate())}_${z(d.getHours())}${z(d.getMinutes())}${z(d.getSeconds())}`})();
-      c.toBlob(b=>{
-        const url=URL.createObjectURL(b); const a=document.createElement('a');
-        a.href=url; a.download=`ar_${ts}.png`; document.body.appendChild(a); a.click();
-        setTimeout(()=>{URL.revokeObjectURL(url); a.remove();}, 300);
-        if (!('download' in HTMLAnchorElement.prototype)) window.open(url,'_blank');
-      }, 'image/png', 1.0);
+    function capture(){
+      const webgl=document.querySelector('canvas.a-canvas'); if(!webgl){ log('撮影エラー：WebGL未検出'); return; }
+      const dpr=Math.max(1,Math.min(3,window.devicePixelRatio||1)), W=Math.round(innerWidth*dpr), H=Math.round(innerHeight*dpr);
+      const c=document.createElement('canvas'); c.width=W; c.height=H;
+      const ctx=c.getContext('2d',{alpha:true});
+      if(bg && (bg.readyState>=2||bg.srcObject)) drawVideoCover(ctx,bg,W,H); else { ctx.fillStyle='#000'; ctx.fillRect(0,0,W,H); }
+      ctx.drawImage(webgl,0,0,W,H);
+      flash.style.transition='none'; flash.style.opacity='1'; requestAnimationFrame(()=>{flash.style.transition='opacity 140ms'; flash.style.opacity='0';});
+      c.toBlob(b=>{ const url=URL.createObjectURL(b); const a=document.createElement('a'); a.href=url; a.download=`ar_${Date.now()}.png`; document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(url); a.remove();},300); if(!('download' in HTMLAnchorElement.prototype)) window.open(url,'_blank'); },'image/png',1.0);
     }
-    document.getElementById('capBtn').addEventListener('click', capture, {passive:true});
+    capBtn.addEventListener('click', capture, {passive:true});
   })();
   </script>
 </body>
