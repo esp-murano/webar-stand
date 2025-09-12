@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
-<title>AR – All-in-One (Android video robust)</title>
+<title>AR – Android waiting robust</title>
 
 <!-- 依存（順番厳守） -->
 <script src="https://aframe.io/releases/1.4.1/aframe.min.js"></script>
@@ -68,7 +68,7 @@
     embedded
   >
     <a-assets timeout="40000">
-      <!-- ★ Android互換を高める属性を付与（muted/playsinline/autoplay/loop/type） -->
+      <!-- ★ HD（既定） -->
       <video id="pv" src="./video.mp4" type="video/mp4"
              preload="auto" autoplay muted playsinline webkit-playsinline loop
              crossorigin="anonymous" disablepictureinpicture controlslist="nodownload noplaybackrate"></video>
@@ -119,6 +119,9 @@
     const videoNode=document.getElementById('videoNode');// <a-video>
     const isAndroid = /Android/i.test(navigator.userAgent);
 
+    const VIDEO_HD  = './video.mp4';
+    const VIDEO_LQ  = './video_low.mp4'; // ある場合のみ自動フォールバック
+
     const log=(m)=>{ hud.textContent=m; };
     const sleep=(ms)=>new Promise(r=>setTimeout(r,ms));
     const waitLoaded=el=>new Promise(res=>el.hasLoaded?res():el.addEventListener('loaded',res,{once:true}));
@@ -129,20 +132,57 @@
       setTimeout(()=>{ if(v.readyState>=2) res(); }, 1200);
     });
 
-    // ---- Android向け: 再生リトライ関数 ----
-    async function playWithRetry(v, tries=4){
-      v.muted = true; v.defaultMuted = true; // 自動再生ポリシー回避
-      v.playsInline = true;
+    // HEADで存在確認
+    async function exists(url){
+      try{ const r=await fetch(url, {method:'HEAD', cache:'no-store'}); return r.ok; }catch(_){ return false; }
+    }
+    // Blobプリフェッチ（最後の手段）
+    async function prefetchBlobUrl(url){
+      try{ const r=await fetch(url, {cache:'no-store'}); if(!r.ok) return null; const b=await r.blob(); return URL.createObjectURL(b); }catch(_){ return null; }
+    }
+
+    // 再生リトライ
+    async function playWithRetry(v, tries=5){
+      v.muted = true; v.defaultMuted = true; v.playsInline = true;
       for (let i=0;i<tries;i++){
         try{
           await waitCanPlay(v);
-          const p = v.play();
-          if (p && p.catch) await p;
+          const p = v.play(); if (p && p.catch) await p;
           if (!v.paused && v.currentTime>0) return true;
-        }catch(e){}
-        // 一部端末は reload が必要
-        try { v.pause(); v.load(); } catch(_) {}
+        }catch(_){}
+        // 軽く蹴る
+        try { v.currentTime = Math.max(0, v.currentTime + 0.001); } catch(_){}
+        try { v.pause(); v.load(); } catch(_){}
         await sleep(200);
+      }
+      return false;
+    }
+
+    // フォールバック制御
+    let usingLQ = false;
+    let usedBlob = false;
+    async function tryRecoverFromWaiting(){
+      // 1) LQがあれば切替（未切替なら）
+      if (!usingLQ && await exists(VIDEO_LQ)){
+        usingLQ = true;
+        log((hud.textContent?hud.textContent+'\n':'')+'低ビットレートへ切替');
+        videoEl.src = VIDEO_LQ + '?ts=' + Date.now();
+        videoEl.load();
+        const ok = await playWithRetry(videoEl, 6);
+        if (ok) return true;
+      }
+      // 2) Blobプリフェッチ（ネットが細い/Range不可の端末でも安定）
+      if (!usedBlob){
+        usedBlob = true;
+        log((hud.textContent?hud.textContent+'\n':'')+'動画をプリフェッチしています…');
+        const url = await prefetchBlobUrl(usingLQ ? VIDEO_LQ : VIDEO_HD);
+        if (url){
+          videoEl.src = url; videoEl.load();
+          const ok = await playWithRetry(videoEl, 6);
+          if (ok) return true;
+        }else{
+          log((hud.textContent?hud.textContent+'\n':'')+'プリフェッチ失敗');
+        }
       }
       return false;
     }
@@ -162,22 +202,36 @@
       log('arReady：カメラ起動');
     }
 
-    // ---- 動画のエラーハンドリング（Androidはここが発火しやすい） ----
-    const onVideoError = ()=>{
-      const err = videoEl.error;
-      log(`動画エラー: ${err ? (err.message || 'code '+err.code) : 'unknown'}\n直リンク再生できるか / コーデック(H.264/AAC)を確認`);
-    };
-    videoEl.addEventListener('error', onVideoError);
-    videoEl.addEventListener('stalled', ()=>log('動画stalled：再試行中…'));
-    videoEl.addEventListener('waiting', ()=>log('動画waiting：バッファ待ち…'));
+    // ---- 動画イベント＆復旧シーケンス ----
+    let waitingTimer=null;
+    function scheduleRecovery(){
+      clearTimeout(waitingTimer);
+      waitingTimer = setTimeout(async ()=>{
+        // まだ詰まっている？
+        if (videoEl.readyState < 3 || videoEl.paused || videoEl.currentTime===0){
+          log((hud.textContent?hud.textContent+'\n':'')+'復旧中…');
+          const ok = await playWithRetry(videoEl, 4) || await tryRecoverFromWaiting();
+          if (!ok) log((hud.textContent?hud.textContent+'\n':'')+'復旧失敗：タップで再開を試してください');
+        }
+      }, 900);
+    }
 
-    // 検出イベント（rawに付く）
+    videoEl.addEventListener('waiting', ()=>{ log('動画waiting：バッファ待ち…'); scheduleRecovery(); });
+    videoEl.addEventListener('stalled', ()=>{ log('動画stalled：ストール…'); scheduleRecovery(); });
+    videoEl.addEventListener('suspend', ()=>{ /* ネット停止等 */ scheduleRecovery(); });
+    videoEl.addEventListener('timeupdate', ()=>{ /* 進み出したら復旧タイマ解除 */ clearTimeout(waitingTimer); });
+    videoEl.addEventListener('error', ()=>{
+      const err = videoEl.error;
+      log(`動画エラー: ${err ? (err.message || 'code '+err.code) : 'unknown'}`);
+      scheduleRecovery();
+    });
+
+    // 検出（raw に付与）
     raw.addEventListener('targetFound', async ()=>{
       log((hud.textContent?hud.textContent+'\n':'')+'targetFound：検出OK（動画再生）');
       videoNode.setAttribute('visible', true);
-      // Androidで失敗しやすいのでリトライ付きで再生
       const ok = await playWithRetry(videoEl, isAndroid ? 6 : 3);
-      if (!ok) log('再生に失敗しました。端末の省電力やデータセーバー設定を確認してください。');
+      if (!ok) scheduleRecovery();
     });
     raw.addEventListener('targetLost', ()=>{
       log((hud.textContent?hud.textContent+'\n':'')+'targetLost：見失い（動画一時停止）');
@@ -198,10 +252,13 @@
 
         await attachMindarStreamToBackground();
 
-        // ★ Androidはここでウォームアップしておく（ユーザー操作直後）
-        if (isAndroid){
-          try{ await playWithRetry(videoEl, 4); videoEl.pause(); videoEl.currentTime=0; }catch(_){}
-        }
+        // ★ ウォームアップ（ユーザー操作直後・無音で短く再生→停止）
+        try{
+          await waitCanPlay(videoEl);
+          await playWithRetry(videoEl, 2);
+          await sleep(60);
+          videoEl.pause(); videoEl.currentTime = 0;
+        }catch(_){}
 
         gate.style.display='none';
       }catch(e){
@@ -209,26 +266,29 @@
       }
     }, {passive:true});
 
-    // 画面復帰時の再生リカバリ（Androidでよく止まる）
+    // 画面復帰時の再生リカバリ
     document.addEventListener('visibilitychange', async ()=>{
-      if (!document.hidden && videoNode.getAttribute('visible')) {
-        await playWithRetry(videoEl, 3);
+      if (!document.hidden && videoNode.getAttribute('visible')){
+        const ok = await playWithRetry(videoEl, 3);
+        if (!ok) scheduleRecovery();
       }
     });
 
     // 画面タップでの強制再開（ユーザー操作トリガ）
     document.body.addEventListener('touchstart', async ()=>{
       if (videoNode.getAttribute('visible') && videoEl.paused){
-        await playWithRetry(videoEl, 3);
+        const ok = await playWithRetry(videoEl, 3);
+        if (!ok) scheduleRecovery();
       }
     }, {passive:true});
 
-    // 音オン/オフ（ユーザー操作なのでiOS/Androidで有効）
+    // 音オン/オフ
     soundBtn.addEventListener('click', async ()=>{
       const muted=!(videoEl.muted===false);
       videoEl.muted=!muted;
       soundBtn.textContent = muted ? '🔊 音ON' : '🔇 音OFF';
-      try{ await playWithRetry(videoEl, 2); }catch(_){}
+      const ok = await playWithRetry(videoEl, 2);
+      if (!ok) scheduleRecovery();
     });
 
     // 📸撮影：#bgcam + WebGLキャンバスを合成保存
